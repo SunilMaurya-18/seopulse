@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: seopulse-backend
+
+    datasource:
+      url: ${DB_URL:jdbc:postgresql://localhost:5432/seopulse}
+      username: ${DB_USERNAME:seopulse}
+      password: ${DB_PASSWORD:seopulse_dev_password}
+      driver-class-name: org.postgresql.Driver
+
+
+  jpa:
+    open-in-view: false
+
+    hibernate:
+       ddl-auto: validate
+
+    properties:
+       hibernate:
+         format_sql: true
+
+
+
+    flyway:
+      enabled: true
