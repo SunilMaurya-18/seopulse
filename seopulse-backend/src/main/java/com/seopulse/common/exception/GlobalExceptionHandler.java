@@ -85,7 +85,7 @@ public class GlobalExceptionHandler {
                 Instant.now(),
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 HttpStatus.INTERNAL_SERVER_ERROR.getReasonPhrase(),
-                "An unexpected error occured",
+                "An unexpected error occurred",
                 request.getRequestURI(),
                 null
         );

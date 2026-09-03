@@ -1,6 +1,8 @@
 package com.seopulse.common.config;
 
 import com.seopulse.common.security.JwtAuthenticationConverter;
+import com.seopulse.common.security.RestAccessDeniedHandler;
+import com.seopulse.common.security.RestAuthenticationEntryPoint;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,6 +34,14 @@ public class SecurityConfig {
                 .sessionManagement(session ->
                         session.sessionCreationPolicy(
                                 SessionCreationPolicy.STATELESS
+                        )
+                )
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint(
+                                new RestAuthenticationEntryPoint()
+                        )
+                        .accessDeniedHandler(
+                                new RestAccessDeniedHandler()
                         )
                 )
                 .authorizeHttpRequests(auth -> auth
