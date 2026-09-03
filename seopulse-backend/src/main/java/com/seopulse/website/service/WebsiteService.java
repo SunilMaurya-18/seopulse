@@ -1,77 +1,157 @@
 package com.seopulse.website.service;
 
 import com.seopulse.common.dto.PageResponse;
+import com.seopulse.common.exception.DuplicateResourceException;
 import com.seopulse.common.exception.ResourceNotFoundException;
+import com.seopulse.project.entity.Project;
+import com.seopulse.project.repository.ProjectRepository;
 import com.seopulse.website.dto.CreateWebsiteRequest;
 import com.seopulse.website.dto.WebsiteResponse;
 import com.seopulse.website.entity.Website;
+import com.seopulse.website.entity.WebsiteStatus;
 import com.seopulse.website.repository.WebsiteRepository;
 
 import lombok.RequiredArgsConstructor;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import static org.springframework.core.annotation.MergedAnnotations.from;
+import java.net.URI;
 
 @Service
 @RequiredArgsConstructor
+@Transactional
 public class WebsiteService {
 
     private final WebsiteRepository websiteRepository;
+    private final ProjectRepository projectRepository;
+    private final UrlValidator urlValidator;
 
-    @Transactional
-    public WebsiteResponse createWebsite(CreateWebsiteRequest request) {
+    public WebsiteResponse createWebsite(
+            Long projectId,
+            Long userId,
+            CreateWebsiteRequest request
+    ) {
 
-        if (websiteRepository.existsByUrl(request.url())) {
-            throw new IllegalArgumentException("URL already exists");
+        Project project = projectRepository
+                .findById(projectId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Project not found"
+                        )
+                );
+
+        if (!project.getUser().getId().equals(userId)) {
+            throw new ResourceNotFoundException(
+                    "Project not found"
+            );
+        }
+
+        URI validatedUrl =
+                urlValidator.validate(request.url());
+
+        String url = validatedUrl.toString();
+
+        if (websiteRepository
+                .existsByProjectIdAndUrl(projectId, url)) {
+
+            throw new DuplicateResourceException(
+                    "Website URL already exists in this project"
+            );
         }
 
         Website website = Website.builder()
-                .name(request.name())
-                .url(request.url())
+                .name(request.name().trim())
+                .url(url)
+                .status(WebsiteStatus.ACTIVE)
+                .project(project)
                 .build();
 
-        Website savedWebsite = websiteRepository.save(website);
+        Website savedWebsite =
+                websiteRepository.save(website);
 
-        return new WebsiteResponse(
-                savedWebsite.getId(),
-                savedWebsite.getName(),
-                savedWebsite.getUrl(),
-                savedWebsite.getCreatedAt(),
-                savedWebsite.getUpdatedAt()
-        );
+        return mapToResponse(savedWebsite);
     }
 
     @Transactional(readOnly = true)
-    public WebsiteResponse getWebsite(Long id) {
+    public PageResponse<WebsiteResponse> getWebsites(
+            Long projectId,
+            Long userId,
+            Pageable pageable
+    ) {
 
-        Website website = websiteRepository.findById(id)
+        Project project = projectRepository
+                .findById(projectId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
-                                "Website not found with id: " + id
+                                "Project not found"
                         )
                 );
+
+        if (!project.getUser().getId().equals(userId)) {
+            throw new ResourceNotFoundException(
+                    "Project not found"
+            );
+        }
+
+        Page<WebsiteResponse> page =
+                websiteRepository
+                        .findByProjectId(projectId, pageable)
+                        .map(this::mapToResponse);
+
+        return PageResponse.from(page);
+    }
+
+    @Transactional(readOnly = true)
+    public WebsiteResponse getWebsite(
+            Long projectId,
+            Long websiteId,
+            Long userId
+    ) {
+
+        Project project = projectRepository
+                .findById(projectId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Project not found"
+                        )
+                );
+
+        if (!project.getUser().getId().equals(userId)) {
+            throw new ResourceNotFoundException(
+                    "Project not found"
+            );
+        }
+
+        Website website = websiteRepository
+                .findById(websiteId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Website not found"
+                        )
+                );
+
+        if (!website.getProject().getId().equals(projectId)) {
+            throw new ResourceNotFoundException(
+                    "Website not found"
+            );
+        }
 
         return mapToResponse(website);
     }
 
-    @Transactional(readOnly = true)
-    public PageResponse<WebsiteResponse> getWebsites(Pageable pageable) {
+    private WebsiteResponse mapToResponse(
+            Website website
+    ) {
 
-        Page<WebsiteResponse> page = websiteRepository
-                .findAll(pageable)
-                .map(this::mapToResponse);
-
-        return PageResponse.<WebsiteResponse>from(page);
-    }
-
-    private WebsiteResponse mapToResponse(Website website) {
         return new WebsiteResponse(
                 website.getId(),
                 website.getName(),
                 website.getUrl(),
+                website.getStatus(),
+                website.getProject().getId(),
                 website.getCreatedAt(),
                 website.getUpdatedAt()
         );

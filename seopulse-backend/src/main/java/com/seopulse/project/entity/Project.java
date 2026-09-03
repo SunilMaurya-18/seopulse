@@ -1,52 +1,43 @@
-package com.seopulse.website.entity;
+package com.seopulse.project.entity;
 
-import com.seopulse.project.entity.Project;
+import com.seopulse.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+
 
 import java.time.Instant;
 
 @Entity
 @Table(
-        name = "websites",
+        name = "projects",
         indexes = {
                 @Index(
-                        name = "idx_websites_project_id",
-                        columnList = "project_id"
+                        name = "idx_project_user_id",
+                        columnList = "user_id"
                 )
         }
 )
 @Getter
 @Setter
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class Website {
-
+@Builder
+public class Project {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false, length = 2048)
-    private String url;
-
     @Column(nullable = false, length = 150)
     private String name;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private WebsiteStatus status;
-
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @Column(length = 500)
+    private String description;
+    @ManyToMany(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
-            name = "project_id",
+            name = "user_id",
             nullable = false
     )
-    private Project project;
-
+    private User user;
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
-
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 

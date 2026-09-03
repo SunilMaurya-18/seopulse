@@ -3,6 +3,8 @@ package com.seopulse.auth.service;
 import com.seopulse.auth.dto.AuthResponse;
 import com.seopulse.auth.dto.LoginRequest;
 import com.seopulse.auth.dto.RegisterRequest;
+import com.seopulse.common.exception.InvalidCredentialsException;
+import com.seopulse.common.exception.ResourceNotFoundException;
 import com.seopulse.user.entity.Role;
 import com.seopulse.user.entity.User;
 import com.seopulse.user.repository.UserRepository;
@@ -10,9 +12,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import org.springframework.stereotype.Service;
+
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +29,9 @@ public class AuthService {
     private final JwtService jwtService;
 
     public AuthResponse register(RegisterRequest request) {
+        String email = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
         if (userRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException("Email already exists");
         }
@@ -50,33 +58,48 @@ public class AuthService {
     }
 
     public AuthResponse login(LoginRequest request) {
-        Authentication authentication =
-                authenticationManager.authenticate(
-                        new UsernamePasswordAuthenticationToken(
-                                request.email(),
-                                request.password()
-                        )
-                );
-        String email = authentication.getName();
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "User not found"
-                        )
-                );
-        String token = jwtService.generateToken(
-                user.getEmail(),
-                user.getRole().name()
-        );
-        // 5. Return response
-        return new AuthResponse(
-                token,
-                "Bearer",
-                user.getId(),
-                user.getName(),
-                user.getEmail(),
-                user.getRole().name()
-        );
+
+        String email = request.email()
+                .trim()
+                .toLowerCase(Locale.ROOT);
+
+        try {
+
+            Authentication authentication =
+                    authenticationManager.authenticate(
+                            new UsernamePasswordAuthenticationToken(
+                                    email,
+                                    request.password()
+                            )
+                    );
+
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() ->
+                            new ResourceNotFoundException(
+                                    "User not found"
+                            )
+                    );
+
+            String token = jwtService.generateToken(
+                    user.getEmail(),
+                    user.getRole().name()
+            );
+
+            return new AuthResponse(
+                    token,
+                    "Bearer",
+                    user.getId(),
+                    user.getName(),
+                    user.getEmail(),
+                    user.getRole().name()
+            );
+
+        } catch (AuthenticationException ex) {
+
+            throw new InvalidCredentialsException(
+                    "Invalid email or password"
+            );
+        }
     }
 }
 

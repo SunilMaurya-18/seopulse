@@ -1,9 +1,9 @@
-package com.seopulse.website.controller;
+package com.seopulse.project.controller;
 
 import com.seopulse.common.dto.PageResponse;
-import com.seopulse.website.dto.CreateWebsiteRequest;
-import com.seopulse.website.dto.WebsiteResponse;
-import com.seopulse.website.service.WebsiteService;
+import com.seopulse.project.dto.CreateProjectRequest;
+import com.seopulse.project.dto.ProjectResponse;
+import com.seopulse.project.service.ProjectService;
 import com.seopulse.user.entity.User;
 import com.seopulse.user.repository.UserRepository;
 
@@ -18,27 +18,25 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/v1/projects/{projectId}/websites")
+@RequestMapping("/api/v1/projects")
 @RequiredArgsConstructor
-public class WebsiteController {
+public class ProjectController {
 
-    private final WebsiteService websiteService;
+    private final ProjectService projectService;
     private final UserRepository userRepository;
 
     @PostMapping
-    public ResponseEntity<WebsiteResponse> createWebsite(
-            @PathVariable Long projectId,
-            @Valid @RequestBody CreateWebsiteRequest request,
+    public ResponseEntity<ProjectResponse> createProject(
+            @Valid @RequestBody CreateProjectRequest request,
             Authentication authentication
     ) {
 
         Long userId = getUserId(authentication);
 
-        WebsiteResponse response =
-                websiteService.createWebsite(
-                        projectId,
-                        userId,
-                        request
+        ProjectResponse response =
+                projectService.createProject(
+                        request,
+                        userId
                 );
 
         return ResponseEntity
@@ -47,33 +45,44 @@ public class WebsiteController {
     }
 
     @GetMapping
-    public PageResponse<WebsiteResponse> getWebsites(
-            @PathVariable Long projectId,
+    public PageResponse<ProjectResponse> getProjects(
             Pageable pageable,
             Authentication authentication
     ) {
 
         Long userId = getUserId(authentication);
 
-        return websiteService.getWebsites(
-                projectId,
+        return projectService.getProjects(
                 userId,
                 pageable
         );
     }
 
-    @GetMapping("/{websiteId}")
-    public WebsiteResponse getWebsite(
+    @GetMapping("/{projectId}")
+    public ProjectResponse getProject(
             @PathVariable Long projectId,
-            @PathVariable Long websiteId,
             Authentication authentication
     ) {
 
         Long userId = getUserId(authentication);
 
-        return websiteService.getWebsite(
+        return projectService.getProject(
                 projectId,
-                websiteId,
+                userId
+        );
+    }
+
+    @DeleteMapping("/{projectId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteProject(
+            @PathVariable Long projectId,
+            Authentication authentication
+    ) {
+
+        Long userId = getUserId(authentication);
+
+        projectService.deleteProject(
+                projectId,
                 userId
         );
     }
@@ -82,8 +91,10 @@ public class WebsiteController {
             Authentication authentication
     ) {
 
+        String email = authentication.getName();
+
         User user = userRepository
-                .findByEmail(authentication.getName())
+                .findByEmail(email)
                 .orElseThrow(() ->
                         new RuntimeException(
                                 "Authenticated user not found"
