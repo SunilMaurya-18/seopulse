@@ -7,8 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface WebsiteRepository extends JpaRepository<Website, Long> {
 
-
     Page<Website> findByProjectId(Long projectId, Pageable pageable);
 
-    boolean existsByProjectId(Long projectId, String url);
+    boolean existsByProjectIdAndUrl(Long projectId, String url);
+
+
 }

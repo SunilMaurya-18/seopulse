@@ -1,11 +1,11 @@
 package com.seopulse.website.controller;
 
 import com.seopulse.common.dto.PageResponse;
+import com.seopulse.common.security.CurrentUserService;
 import com.seopulse.website.dto.CreateWebsiteRequest;
 import com.seopulse.website.dto.WebsiteResponse;
 import com.seopulse.website.service.WebsiteService;
-import com.seopulse.user.entity.User;
-import com.seopulse.user.repository.UserRepository;
+
 
 import jakarta.validation.Valid;
 
@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.*;
 public class WebsiteController {
 
     private final WebsiteService websiteService;
-    private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
 
     @PostMapping
     public ResponseEntity<WebsiteResponse> createWebsite(
@@ -32,7 +32,8 @@ public class WebsiteController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
+        ;
 
         WebsiteResponse response =
                 websiteService.createWebsite(
@@ -53,7 +54,7 @@ public class WebsiteController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
 
         return websiteService.getWebsites(
                 projectId,
@@ -69,7 +70,7 @@ public class WebsiteController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
 
         return websiteService.getWebsite(
                 projectId,
@@ -78,18 +79,5 @@ public class WebsiteController {
         );
     }
 
-    private Long getUserId(
-            Authentication authentication
-    ) {
 
-        User user = userRepository
-                .findByEmail(authentication.getName())
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "Authenticated user not found"
-                        )
-                );
-
-        return user.getId();
-    }
 }

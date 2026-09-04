@@ -1,11 +1,12 @@
 package com.seopulse.project.controller;
 
 import com.seopulse.common.dto.PageResponse;
+import com.seopulse.common.security.CurrentUserService;
 import com.seopulse.project.dto.CreateProjectRequest;
 import com.seopulse.project.dto.ProjectResponse;
 import com.seopulse.project.service.ProjectService;
-import com.seopulse.user.entity.User;
-import com.seopulse.user.repository.UserRepository;
+
+
 
 import jakarta.validation.Valid;
 
@@ -23,7 +24,7 @@ import org.springframework.web.bind.annotation.*;
 public class ProjectController {
 
     private final ProjectService projectService;
-    private final UserRepository userRepository;
+    private final CurrentUserService currentUserService;
 
     @PostMapping
     public ResponseEntity<ProjectResponse> createProject(
@@ -31,7 +32,7 @@ public class ProjectController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
 
         ProjectResponse response =
                 projectService.createProject(
@@ -50,7 +51,7 @@ public class ProjectController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
 
         return projectService.getProjects(
                 userId,
@@ -64,7 +65,7 @@ public class ProjectController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
 
         return projectService.getProject(
                 projectId,
@@ -79,7 +80,7 @@ public class ProjectController {
             Authentication authentication
     ) {
 
-        Long userId = getUserId(authentication);
+        Long userId = currentUserService.getUserId(authentication);
 
         projectService.deleteProject(
                 projectId,
@@ -87,20 +88,4 @@ public class ProjectController {
         );
     }
 
-    private Long getUserId(
-            Authentication authentication
-    ) {
-
-        String email = authentication.getName();
-
-        User user = userRepository
-                .findByEmail(email)
-                .orElseThrow(() ->
-                        new RuntimeException(
-                                "Authenticated user not found"
-                        )
-                );
-
-        return user.getId();
-    }
 }

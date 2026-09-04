@@ -31,6 +31,9 @@ spring:
           pageable:
             default-page-size: 20
             max-page-size: 100
+        redis:
+          host: ${REDIS_HOST:localhost}
+          port: ${REDIS_PORT:6379}
 
     springdoc:
       swagger-ui:
@@ -41,3 +44,4 @@ spring:
     jwt:
       secret: ${JWT_SECRET}
       expiration: ${JWT_EXPIRATION:3600000}
+

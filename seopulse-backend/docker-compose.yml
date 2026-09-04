@@ -4,6 +4,7 @@ services:
     image: postgres:17
     container_name: seopulse-postgres
 
+
     environment:
       POSTGRES_DB: seopulse
       POSTGRES_USER: seopulse
@@ -11,15 +12,22 @@ services:
 
     ports:
       - "5432:5432"
+  redis:
+    image: redis:8
+    container_name: seopulse-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
 
     volumes:
       - seopulse_postgres_data:/var/lib/postgresql/data
 
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U seopulse -d seopulse"]
+      test: [ "CMD-SHELL", "pg_isready -U seopulse -d seopulse" ]
       interval: 10s
       timeout: 5s
       retries: 5
+
 
 volumes:
   seopulse_postgres_data:
