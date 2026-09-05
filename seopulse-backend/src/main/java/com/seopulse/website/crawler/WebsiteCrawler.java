@@ -1,12 +1,10 @@
 package com.seopulse.website.crawler;
 
 import com.seopulse.website.service.UrlValidator;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.jsoup.select.Elements;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
@@ -26,7 +24,6 @@ import java.util.Queue;
 import java.util.Set;
 
 @Component
-@RequiredArgsConstructor
 @Slf4j
 public class WebsiteCrawler {
 
@@ -35,46 +32,54 @@ public class WebsiteCrawler {
     private final UrlNormalizer urlNormalizer;
     private final HttpClient httpClient;
 
-    private HttpClient createHttpClient() {
+    public WebsiteCrawler(
+            CrawlerProperties properties,
+            UrlValidator urlValidator,
+            UrlNormalizer urlNormalizer
+    ) {
+        this.properties = properties;
+        this.urlValidator = urlValidator;
+        this.urlNormalizer = urlNormalizer;
 
-        return HttpClient.newBuilder()
-                .connectTimeout(
-                        Duration.ofMillis(
-                                properties.getConnectTimeoutMs()
+        this.httpClient =
+                HttpClient.newBuilder()
+                        .connectTimeout(
+                                Duration.ofMillis(
+                                        properties.getConnectTimeoutMs()
+                                )
                         )
-                )
-                .followRedirects(
-                        HttpClient.Redirect.NEVER
-                )
-                .build();
+                        .followRedirects(
+                                HttpClient.Redirect.NEVER
+                        )
+                        .build();
     }
-
 
     /**
      * Crawls a website starting from the supplied URL.
+     *
+     * @param startUrl website URL
+     * @return list of successfully crawled pages
      */
     public List<CrawledPage> crawl(String startUrl) {
 
+        URI validatedStartUrl =
+                urlValidator.validate(startUrl);
+
         String normalizedStartUrl =
-                urlNormalizer.normalize(startUrl);
+                urlNormalizer.normalize(
+                        validatedStartUrl.toString()
+                );
 
         if (normalizedStartUrl == null) {
             throw new IllegalArgumentException(
-                    "Invalid starting URL"
+                    "Unable to normalize website URL"
             );
         }
 
-        /*
-         * Validate the seed URL before making
-         * any network request.
-         */
-        urlValidator.validate(normalizedStartUrl);
-
-        URI startUri =
-                URI.create(normalizedStartUrl);
-
         String allowedHost =
-                normalizeHost(startUri.getHost());
+                normalizeHost(
+                        validatedStartUrl.getHost()
+                );
 
         Queue<CrawlTarget> queue =
                 new ArrayDeque<>();
@@ -85,7 +90,7 @@ public class WebsiteCrawler {
         List<CrawledPage> crawledPages =
                 new ArrayList<>();
 
-        queue.offer(
+        queue.add(
                 new CrawlTarget(
                         normalizedStartUrl,
                         0
@@ -96,10 +101,18 @@ public class WebsiteCrawler {
                 normalizedStartUrl
         );
 
+        log.info(
+                "Starting website crawl: url={}, maxPages={}, maxDepth={}",
+                normalizedStartUrl,
+                properties.getMaxPages(),
+                properties.getMaxDepth()
+        );
 
-        while (!queue.isEmpty()
-                && crawledPages.size()
-                < properties.getMaxPages()) {
+        while (
+                !queue.isEmpty()
+                        && crawledPages.size()
+                        < properties.getMaxPages()
+        ) {
 
             CrawlTarget target =
                     queue.poll();
@@ -118,68 +131,79 @@ public class WebsiteCrawler {
 
                 crawledPages.add(page);
 
-                /*
-                 * Don't discover more links when
-                 * maximum depth has been reached.
-                 */
-                if (target.depth()
-                        >= properties.getMaxDepth()) {
+                log.debug(
+                        "Page crawled: url={}, status={}, depth={}",
+                        page.url(),
+                        page.status(),
+                        page.depth()
+                );
 
+                if (
+                        target.depth()
+                                >= properties.getMaxDepth()
+                ) {
                     continue;
                 }
 
-                /*
-                 * Add newly discovered links.
-                 */
-                for (String discoveredUrl
-                        : page.discoveredUrls()) {
+                for (String discoveredUrl :
+                        page.discoveredUrls()) {
 
-                    if (discoveredUrls.contains(
-                            discoveredUrl
-                    )) {
-                        continue;
+                    if (
+                            discoveredUrls.size()
+                                    >= properties.getMaxPages()
+                    ) {
+                        break;
                     }
 
-                    URI discoveredUri =
-                            URI.create(discoveredUrl);
-
-                    String discoveredHost =
-                            normalizeHost(
-                                    discoveredUri.getHost()
+                    String normalizedUrl =
+                            urlNormalizer.normalize(
+                                    discoveredUrl
                             );
 
-                    /*
-                     * Same-origin restriction.
-                     */
-                    if (!allowedHost.equals(
-                            discoveredHost
-                    )) {
+                    if (normalizedUrl == null) {
                         continue;
                     }
 
-                    /*
-                     * Validate URL again before putting
-                     * it into the crawl queue.
-                     */
+                    if (
+                            discoveredUrls.contains(
+                                    normalizedUrl
+                            )
+                    ) {
+                        continue;
+                    }
+
+                    if (
+                            !isSameOrigin(
+                                    normalizedUrl,
+                                    allowedHost
+                            )
+                    ) {
+                        continue;
+                    }
+
                     try {
+
                         urlValidator.validate(
-                                discoveredUrl
+                                normalizedUrl
                         );
+
                     } catch (IllegalArgumentException ex) {
+
                         log.debug(
                                 "Skipping unsafe URL: {}",
-                                discoveredUrl
+                                normalizedUrl
                         );
+
                         continue;
                     }
 
                     discoveredUrls.add(
-                            discoveredUrl
+                            normalizedUrl
                     );
 
-                    queue.offer(
+                    queue.add(
                             new CrawlTarget(
-                                    discoveredUrl,
+                                    normalizedUrl,
                                     target.depth() + 1
                             )
                     );
@@ -188,15 +212,16 @@ public class WebsiteCrawler {
             } catch (Exception ex) {
 
                 log.warn(
-                        "Failed to crawl URL: {}",
+                        "Failed to crawl page: url={}, depth={}, error={}",
                         target.url(),
-                        ex
+                        target.depth(),
+                        ex.getMessage()
                 );
             }
         }
 
         log.info(
-                "Crawl completed: startUrl={}, pages={}",
+                "Website crawl finished: startUrl={}, pagesCrawled={}",
                 normalizedStartUrl,
                 crawledPages.size()
         );
@@ -204,33 +229,249 @@ public class WebsiteCrawler {
         return crawledPages;
     }
 
-
     /**
-     * Crawls one individual page.
+     * Crawls one page.
      */
     private CrawledPage crawlPage(
             CrawlTarget target,
             String allowedHost
-    ) throws Exception {
+    ) throws IOException, InterruptedException {
 
-        URI uri =
-                URI.create(target.url());
+        URI currentUri =
+                urlValidator.validate(target.url());
 
-        /*
-         * Validate URL immediately before making
-         * the network request.
-         */
-        urlValidator.validate(
-                target.url()
-        );
+        String currentUrl =
+                urlNormalizer.normalize(currentUri.toString());
+
+        if (currentUrl == null) {
+            return null;
+        }
+
+        if (!isSameOrigin(currentUrl, allowedHost)) {
+            return null;
+        }
+
+        HttpResponse<InputStream> response =
+                sendRequest(currentUri);
+
+        try (InputStream body = response.body()) {
+
+            int statusCode =
+                    response.statusCode();
+
+            HttpHeaders headers =
+                    response.headers();
+
+            String contentType =
+                    headers.firstValue("Content-Type")
+                            .orElse(null);
+
+            /*
+             * Handle redirects manually.
+             */
+            if (isRedirect(statusCode)) {
+
+                String location =
+                        headers.firstValue("Location")
+                                .orElse(null);
+
+                if (location == null || location.isBlank()) {
+                    return null;
+                }
+
+                URI redirectUri;
+
+                try {
+                    redirectUri =
+                            currentUri.resolve(location);
+                } catch (IllegalArgumentException ex) {
+
+                    log.debug(
+                            "Invalid redirect URL: {}",
+                            location
+                    );
+
+                    return null;
+                }
+
+                String redirectUrl =
+                        urlNormalizer.normalize(
+                                redirectUri.toString()
+                        );
+
+                if (redirectUrl == null) {
+                    return null;
+                }
+
+                /*
+                 * Never follow redirects outside the website.
+                 */
+                if (!isSameOrigin(
+                        redirectUrl,
+                        allowedHost
+                )) {
+
+                    log.debug(
+                            "Skipping cross-origin redirect: {} -> {}",
+                            currentUrl,
+                            redirectUrl
+                    );
+
+                    return null;
+                }
+
+                /*
+                 * Revalidate redirect destination
+                 * for SSRF protection.
+                 */
+                try {
+
+                    urlValidator.validate(
+                            redirectUrl
+                    );
+
+                } catch (IllegalArgumentException ex) {
+
+                    log.warn(
+                            "Blocked unsafe redirect: {} -> {}",
+                            currentUrl,
+                            redirectUrl
+                    );
+
+                    return null;
+                }
+
+                /*
+                 * We currently do not follow redirects.
+                 */
+                return null;
+            }
+
+            /*
+             * Non-success HTTP responses.
+             */
+            if (statusCode < 200 || statusCode >= 300) {
+
+                return new CrawledPage(
+                        currentUrl,
+                        statusCode,
+                        contentType,
+                        null,
+                        null,
+                        null,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        target.depth(),
+                        Set.of()
+                );
+            }
+
+            /*
+             * Only HTML pages are analyzed.
+             */
+            if (!isHtml(contentType)) {
+                return null;
+            }
+
+            String html =
+                    readLimitedBody(
+                            body,
+                            properties.getMaxBodySizeBytes()
+                    );
+
+            if (html == null) {
+                return null;
+            }
+
+            Document document =
+                    Jsoup.parse(
+                            html,
+                            currentUrl
+                    );
+
+            String title =
+                    extractTitle(document);
+
+            String metaDescription =
+                    extractMetaDescription(document);
+
+            String canonicalUrl =
+                    extractCanonical(
+                            document,
+                            currentUrl
+                    );
+
+            int wordCount =
+                    countWords(document);
+
+            int h1Count =
+                    document.select("h1").size();
+
+            int imageCount =
+                    document.select("img").size();
+
+            int imagesWithoutAlt =
+                    countImagesWithoutAlt(
+                            document
+                    );
+
+            int internalLinkCount =
+                    countInternalLinks(
+                            document,
+                            allowedHost
+                    );
+
+            int externalLinkCount =
+                    countExternalLinks(
+                            document,
+                            allowedHost
+                    );
+
+            Set<String> links =
+                    extractLinks(
+                            document,
+                            allowedHost
+                    );
+
+            return new CrawledPage(
+                    currentUrl,
+                    statusCode,
+                    contentType,
+                    title,
+                    metaDescription,
+                    canonicalUrl,
+                    wordCount,
+                    h1Count,
+                    imageCount,
+                    imagesWithoutAlt,
+                    internalLinkCount,
+                    externalLinkCount,
+                    target.depth(),
+                    links
+            );
+        }
+    }
+
+    /**
+     * Sends a GET request.
+     * <p>
+     * Redirects are disabled at HttpClient level because redirects
+     * are validated manually.
+     */
+    private HttpResponse<InputStream> sendRequest(
+            URI uri
+    ) throws IOException, InterruptedException {
 
         HttpRequest request =
                 HttpRequest.newBuilder()
                         .uri(uri)
                         .timeout(
                                 Duration.ofMillis(
-                                        properties
-                                                .getConnectTimeoutMs()
+                                        properties.getConnectTimeoutMs()
                                 )
                         )
                         .header(
@@ -244,245 +485,59 @@ public class WebsiteCrawler {
                         .GET()
                         .build();
 
-        HttpResponse<InputStream> response =
-                httpClient.send(
-                        request,
-                        HttpResponse.BodyHandlers.ofInputStream()
-                );
-
-        int statusCode =
-                response.statusCode();
-
-        HttpHeaders headers =
-                response.headers();
-
-        String contentType =
-                headers.firstValue("Content-Type")
-                        .orElse("");
-
-        /*
-         * Handle redirects ourselves.
-         *
-         * This allows us to validate the redirect
-         * destination before following it.
-         */
-        if (isRedirect(statusCode)) {
-
-            String location =
-                    headers.firstValue("Location")
-                            .orElse(null);
-
-            if (location == null) {
-                return null;
-            }
-
-            URI redirectUri =
-                    uri.resolve(location);
-
-            String normalizedRedirect =
-                    urlNormalizer.normalize(
-                            redirectUri.toString()
-                    );
-
-            if (normalizedRedirect == null) {
-                return null;
-            }
-
-            URI validatedRedirectUri =
-                    URI.create(
-                            normalizedRedirect
-                    );
-
-            String redirectHost =
-                    normalizeHost(
-                            validatedRedirectUri.getHost()
-                    );
-
-            if (!allowedHost.equals(
-                    redirectHost
-            )) {
-                log.warn(
-                        "Skipping cross-origin redirect: {} -> {}",
-                        target.url(),
-                        normalizedRedirect
-                );
-
-                return null;
-            }
-
-            /*
-             * Validate redirect destination for SSRF.
-             */
-            urlValidator.validate(
-                    normalizedRedirect
-            );
-
-            /*
-             * We don't recursively follow redirects here.
-             *
-             * The redirected URL can instead be discovered
-             * by the caller as a new crawl target.
-             */
-            return new CrawledPage(
-                    target.url(),
-                    statusCode,
-                    contentType,
-                    null,
-                    null,
-                    null,
-                    0,
-                    target.depth(),
-                    Set.of(normalizedRedirect)
-            );
-        }
-
-        /*
-         * We only analyze successful responses.
-         */
-        if (statusCode < 200
-                || statusCode >= 300) {
-
-            return new CrawledPage(
-                    target.url(),
-                    statusCode,
-                    contentType,
-                    null,
-                    null,
-                    null,
-                    0,
-                    target.depth(),
-                    Set.of()
-            );
-        }
-
-        /*
-         * Only process HTML documents.
-         */
-        if (!isHtml(contentType)) {
-
-            return new CrawledPage(
-                    target.url(),
-                    statusCode,
-                    contentType,
-                    null,
-                    null,
-                    null,
-                    0,
-                    target.depth(),
-                    Set.of()
-            );
-        }
-
-        byte[] body =
-                readLimitedBody(
-                        response.body(),
-                        properties.getMaxBodySizeBytes()
-                );
-
-        Document document =
-                Jsoup.parse(
-                        new String(
-                                body,
-                                java.nio.charset.StandardCharsets.UTF_8
-                        ),
-                        target.url()
-                );
-
-        String title =
-                extractTitle(document);
-
-        String metaDescription =
-                extractMetaDescription(document);
-
-        String canonicalUrl =
-                extractCanonical(
-                        document,
-                        target.url()
-                );
-
-        int wordCount =
-                countWords(
-                        document
-                                .body()
-                                .text()
-                );
-
-        Set<String> links =
-                extractLinks(
-                        document,
-                        target.url()
-                );
-
-        return new CrawledPage(
-                target.url(),
-                statusCode,
-                contentType,
-                title,
-                metaDescription,
-                canonicalUrl,
-                wordCount,
-                target.depth(),
-                links
+        return httpClient.send(
+                request,
+                HttpResponse.BodyHandlers.ofInputStream()
         );
     }
 
-
     /**
      * Extracts links from the page.
+     * <p>
+     * Only HTTP/HTTPS URLs belonging to the same host are returned.
      */
     private Set<String> extractLinks(
             Document document,
-            String baseUrl
+            String allowedHost
     ) {
 
-        Set<String> urls =
+        Set<String> links =
                 new HashSet<>();
 
-        Elements links =
-                document.select("a[href]");
-
-        for (Element link : links) {
+        for (Element element :
+                document.select("a[href]")) {
 
             String href =
-                    link.attr("href");
+                    element.absUrl("href");
 
-            if (href == null
-                    || href.isBlank()) {
+            if (href == null || href.isBlank()) {
                 continue;
             }
 
-            try {
+            String normalized =
+                    urlNormalizer.normalize(href);
 
-                URI base =
-                        URI.create(baseUrl);
-
-                URI resolved =
-                        base.resolve(href);
-
-                String normalized =
-                        urlNormalizer.normalize(
-                                resolved.toString()
-                        );
-
-                if (normalized != null) {
-                    urls.add(normalized);
-                }
-
-            } catch (Exception ex) {
-
-                log.debug(
-                        "Invalid discovered link: {}",
-                        href
-                );
+            if (normalized == null) {
+                continue;
             }
+
+            if (
+                    !isSameOrigin(
+                            normalized,
+                            allowedHost
+                    )
+            ) {
+                continue;
+            }
+
+            links.add(normalized);
         }
 
-        return urls;
+        return links;
     }
 
-
     /**
-     * Extracts the HTML title.
+     * Extracts the page title.
      */
     private String extractTitle(
             Document document
@@ -503,9 +558,8 @@ public class WebsiteCrawler {
                 : value;
     }
 
-
     /**
-     * Extracts meta description.
+     * Extracts the meta description.
      */
     private String extractMetaDescription(
             Document document
@@ -521,66 +575,60 @@ public class WebsiteCrawler {
         }
 
         String value =
-                element.attr("content")
-                        .trim();
+                element.attr("content").trim();
 
         return value.isBlank()
                 ? null
                 : value;
     }
 
-
     /**
-     * Extracts canonical URL.
+     * Extracts the canonical URL.
      */
     private String extractCanonical(
             Document document,
-            String baseUrl
+            String currentUrl
     ) {
 
-        Element element =
+        Element canonical =
                 document.selectFirst(
                         "link[rel=canonical]"
                 );
 
-        if (element == null) {
+        if (canonical == null) {
             return null;
         }
 
         String href =
-                element.attr("href");
+                canonical.absUrl("href");
 
-        if (href == null
-                || href.isBlank()) {
+        if (href == null || href.isBlank()) {
             return null;
         }
 
-        try {
+        String normalized =
+                urlNormalizer.normalize(href);
 
-            URI base =
-                    URI.create(baseUrl);
-
-            URI canonical =
-                    base.resolve(href);
-
-            return urlNormalizer.normalize(
-                    canonical.toString()
-            );
-
-        } catch (Exception ex) {
-
+        if (normalized == null) {
             return null;
         }
+
+        return normalized;
     }
 
-
     /**
-     * Counts visible words in the document body.
+     * Counts textual words on the page.
      */
-    private int countWords(String text) {
+    private int countWords(
+            Document document
+    ) {
 
-        if (text == null
-                || text.isBlank()) {
+        String text =
+                document.body() != null
+                        ? document.body().text()
+                        : document.text();
+
+        if (text == null || text.isBlank()) {
             return 0;
         }
 
@@ -589,39 +637,164 @@ public class WebsiteCrawler {
                 .length;
     }
 
+    /**
+     * Counts images that do not have alt text.
+     * <p>
+     * An empty alt attribute is considered missing for our current
+     * SEO audit implementation.
+     */
+    private int countImagesWithoutAlt(
+            Document document
+    ) {
+
+        int count = 0;
+
+        for (Element image :
+                document.select("img")) {
+
+            String alt =
+                    image.attr("alt");
+
+            if (alt == null || alt.isBlank()) {
+                count++;
+            }
+        }
+
+        return count;
+    }
 
     /**
-     * Prevents responses larger than the configured limit
-     * from being loaded into memory.
+     * Counts links pointing to the same website host.
      */
-    private byte[] readLimitedBody(
+    private int countInternalLinks(
+            Document document,
+            String allowedHost
+    ) {
+
+        int count = 0;
+
+        for (Element link :
+                document.select("a[href]")) {
+
+            String href =
+                    link.absUrl("href");
+
+            if (href == null || href.isBlank()) {
+                continue;
+            }
+
+            try {
+
+                URI uri =
+                        URI.create(href);
+
+                String host =
+                        normalizeHost(
+                                uri.getHost()
+                        );
+
+                if (
+                        host != null
+                                && allowedHost.equals(host)
+                ) {
+                    count++;
+                }
+
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * Counts links pointing outside the website.
+     */
+    private int countExternalLinks(
+            Document document,
+            String allowedHost
+    ) {
+
+        int count = 0;
+
+        for (Element link :
+                document.select("a[href]")) {
+
+            String href =
+                    link.absUrl("href");
+
+            if (href == null || href.isBlank()) {
+                continue;
+            }
+
+            try {
+
+                URI uri =
+                        URI.create(href);
+
+                String host =
+                        normalizeHost(
+                                uri.getHost()
+                        );
+
+                if (
+                        host != null
+                                && !allowedHost.equals(host)
+                ) {
+                    count++;
+                }
+
+            } catch (IllegalArgumentException ignored) {
+            }
+        }
+
+        return count;
+    }
+
+    /**
+     * Reads the HTTP response while enforcing the configured
+     * maximum response size.
+     */
+    private String readLimitedBody(
             InputStream inputStream,
             long maxBytes
-    ) throws IOException {
+    ) {
 
-        try (InputStream input =
-                     inputStream) {
+        if (inputStream == null) {
+            return null;
+        }
 
-            ByteArrayOutputStream output =
-                    new ByteArrayOutputStream();
+        try (
+                InputStream input =
+                        inputStream;
+
+                ByteArrayOutputStream output =
+                        new ByteArrayOutputStream()
+        ) {
 
             byte[] buffer =
                     new byte[8192];
 
-            long total = 0;
+            long totalBytes = 0;
 
             int bytesRead;
 
-            while ((bytesRead =
-                    input.read(buffer)) != -1) {
+            while (
+                    (bytesRead =
+                            input.read(buffer))
+                            != -1
+            ) {
 
-                total += bytesRead;
+                totalBytes += bytesRead;
 
-                if (total > maxBytes) {
+                if (totalBytes > maxBytes) {
 
-                    throw new IOException(
-                            "Response body exceeds maximum allowed size"
+                    log.warn(
+                            "Response exceeded maximum body size: {} bytes",
+                            maxBytes
                     );
+
+                    return null;
                 }
 
                 output.write(
@@ -631,23 +804,46 @@ public class WebsiteCrawler {
                 );
             }
 
-            return output.toByteArray();
+            return output.toString(
+                    java.nio.charset.StandardCharsets.UTF_8
+            );
+
+        } catch (IOException ex) {
+
+            log.warn(
+                    "Failed to read HTTP response body: {}",
+                    ex.getMessage()
+            );
+
+            return null;
         }
     }
 
-
+    /**
+     * Determines whether a response is HTML.
+     */
     private boolean isHtml(
             String contentType
     ) {
 
-        String value =
+        if (contentType == null) {
+            return false;
+        }
+
+        String normalized =
                 contentType.toLowerCase();
 
-        return value.contains("text/html")
-                || value.contains("application/xhtml+xml");
+        return normalized.contains(
+                "text/html"
+        )
+                || normalized.contains(
+                "application/xhtml+xml"
+        );
     }
 
-
+    /**
+     * Determines whether the status code represents a redirect.
+     */
     private boolean isRedirect(
             int statusCode
     ) {
@@ -659,24 +855,68 @@ public class WebsiteCrawler {
                 || statusCode == 308;
     }
 
+    /**
+     * Checks whether a URL belongs to the same host as the website.
+     */
+    private boolean isSameOrigin(
+            String url,
+            String allowedHost
+    ) {
 
+        try {
+
+            URI uri =
+                    URI.create(url);
+
+            String host =
+                    normalizeHost(
+                            uri.getHost()
+                    );
+
+            return host != null
+                    && host.equals(
+                    allowedHost
+            );
+
+        } catch (IllegalArgumentException ex) {
+
+            return false;
+        }
+    }
+
+    /**
+     * Normalizes host names for comparison.
+     */
     private String normalizeHost(
             String host
     ) {
 
-        if (host == null) {
-            return "";
+        if (host == null || host.isBlank()) {
+            return null;
         }
 
         return host
-                .toLowerCase()
-                .stripTrailing();
+                .trim()
+                .toLowerCase();
     }
 
-
     /**
-     * Represents one URL waiting to be crawled.
+     * Safely closes an HTTP response body.
      */
+    private void closeBody(
+            InputStream inputStream
+    ) {
+
+        if (inputStream == null) {
+            return;
+        }
+
+        try {
+            inputStream.close();
+        } catch (IOException ignored) {
+        }
+    }
+
     private record CrawlTarget(
             String url,
             int depth

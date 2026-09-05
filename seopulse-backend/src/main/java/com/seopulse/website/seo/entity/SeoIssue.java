@@ -21,6 +21,11 @@ import java.time.Instant;
                 @Index(
                         name = "idx_seo_issue_severity",
                         columnList = "severity"
+                ),
+                @Index(
+                        name = "uk_seo_issues_page_rule",
+                        columnList = "audit_page_id, rule_code",
+                        unique = true
                 )
         }
 )

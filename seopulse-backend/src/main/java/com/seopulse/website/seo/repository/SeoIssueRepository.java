@@ -13,4 +13,5 @@ public interface SeoIssueRepository
     long countByAuditPageId(Long auditPageId);
 
     long countByAuditPageAuditId(Long auditId);
+    void deleteByAuditPageId(Long auditPageId);
 }

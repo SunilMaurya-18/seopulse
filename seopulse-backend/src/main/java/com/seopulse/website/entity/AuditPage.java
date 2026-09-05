@@ -66,6 +66,16 @@ public class AuditPage {
     private Integer wordCount;
     @Column(nullable = false)
     private Integer depth;
+    @Column(name = "h1_count", nullable = false)
+    private Integer h1Count;
+    @Column(name = "image_count", nullable = false)
+    private Integer imageCount;
+    @Column(name = "images_without_alt", nullable = false)
+    private Integer imagesWithoutAlt;
+    @Column(name = "internal_link_count", nullable = false)
+    private Integer internalLinkCount;
+    @Column(name = "external_link_count", nullable = false)
+    private Integer externalLinkCount;
 
     @Column(name = "crawled_at")
     private Instant crawledAt;
@@ -84,6 +94,26 @@ public class AuditPage {
 
         if (status == null) {
             status = AuditPageStatus.QUEUED;
+        }
+
+        if (h1Count == null) {
+            h1Count = 0;
+        }
+
+        if (imageCount == null) {
+            imageCount = 0;
+        }
+
+        if (imagesWithoutAlt == null) {
+            imagesWithoutAlt = 0;
+        }
+
+        if (internalLinkCount == null) {
+            internalLinkCount = 0;
+        }
+
+        if (externalLinkCount == null) {
+            externalLinkCount = 0;
         }
     }
 }

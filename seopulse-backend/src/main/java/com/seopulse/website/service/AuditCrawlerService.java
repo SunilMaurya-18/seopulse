@@ -11,7 +11,7 @@ import com.seopulse.website.repository.AuditRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
 
 import java.time.Instant;
 import java.util.List;
@@ -120,6 +120,11 @@ public class AuditCrawlerService {
                             .metaDescription(page.metaDescription())
                             .canonicalUrl(page.canonicalUrl())
                             .wordCount(page.wordCount())
+                            .h1Count(page.h1Count())
+                            .imageCount(page.imageCount())
+                            .imagesWithoutAlt(page.imagesWithoutAlt())
+                            .internalLinkCount(page.internalLinkCount())
+                            .externalLinkCount(page.externalLinkCount())
                             .depth(page.depth())
                             .crawledAt(Instant.now())
                             .build();

@@ -32,6 +32,7 @@ public class SeoAnalysisService {
             AuditPage page
     ) {
 
+        seoIssueRepository.deleteByAuditPageId(page.getId());
         List<SeoIssue> savedIssues =
                 new ArrayList<>();
 
@@ -94,7 +95,40 @@ public class SeoAnalysisService {
                     "Make the page title more descriptive.";
 
             case "TITLE_TOO_LONG" ->
-                    "Shorten the page title to avoid excessive length.";
+                    "Shorten the page title.";
+
+            case "META_DESCRIPTION_MISSING" ->
+                    "Add a unique meta description.";
+
+            case "META_DESCRIPTION_TOO_SHORT" ->
+                    "Expand the meta description to provide useful page context.";
+
+            case "META_DESCRIPTION_TOO_LONG" ->
+                    "Shorten the meta description.";
+
+            case "H1_MISSING" ->
+                    "Add a clear primary H1 heading.";
+
+            case "MULTIPLE_H1" ->
+                    "Review the page structure and keep a clear primary H1.";
+
+            case "CANONICAL_MISSING" ->
+                    "Add a canonical URL when appropriate.";
+
+            case "HTTP_4XX" ->
+                    "Fix the broken or inaccessible page.";
+
+            case "HTTP_5XX" ->
+                    "Investigate the server error.";
+
+            case "LOW_WORD_COUNT" ->
+                    "Review whether the page provides sufficient useful content.";
+
+            case "IMAGE_ALT_MISSING" ->
+                    "Add meaningful alt text to informative images.";
+
+            case "NO_INTERNAL_LINKS" ->
+                    "Add relevant internal links to help users and search engines discover related content.";
 
             default ->
                     "Review this SEO issue and make the recommended improvement.";

@@ -3,6 +3,7 @@ package com.seopulse.website.job;
 import com.seopulse.website.entity.Audit;
 import com.seopulse.website.entity.AuditStatus;
 import com.seopulse.website.repository.AuditRepository;
+import com.seopulse.website.seo.service.AuditAnalysisService;
 import com.seopulse.website.service.AuditCrawlerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,7 +31,7 @@ public class AuditWorker {
     private final AuditRepository auditRepository;
     private final AuditQueue auditQueue;
     private final AuditCrawlerService auditCrawlerService;
-
+    private final AuditAnalysisService auditAnalysisService;
 
     /**
      * Reads the next available audit job from Redis Stream
@@ -182,6 +183,8 @@ public class AuditWorker {
             );
 
             auditCrawlerService.crawlAudit(auditId);
+
+            auditAnalysisService.analyzeAudit(auditId);
 
             acknowledge(record);
 
