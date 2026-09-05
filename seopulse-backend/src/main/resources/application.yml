@@ -45,3 +45,11 @@ spring:
       secret: ${JWT_SECRET}
       expiration: ${JWT_EXPIRATION:3600000}
 
+    seopulse:
+      crawler:
+        max-pages: 500
+        max-depth: 5
+        connect-timeout-ms: 10000
+        max-body-size-bytes: 5000000
+        user-agent: "SEOPulseBot/1.0 (+https://seopulse.example.com/bot)"
+        respect-robots-txt: true

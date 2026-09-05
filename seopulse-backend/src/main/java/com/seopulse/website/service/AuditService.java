@@ -7,9 +7,11 @@ import com.seopulse.project.entity.Project;
 import com.seopulse.project.repository.ProjectRepository;
 import com.seopulse.website.dto.AuditResponse;
 import com.seopulse.website.entity.Audit;
+import com.seopulse.website.entity.AuditOutbox;
 import com.seopulse.website.entity.AuditStatus;
 import com.seopulse.website.entity.Website;
 import com.seopulse.website.job.AuditQueue;
+import com.seopulse.website.repository.AuditOutboxRepository;
 import com.seopulse.website.repository.AuditRepository;
 import com.seopulse.website.repository.WebsiteRepository;
 
@@ -31,7 +33,8 @@ public class AuditService {
     private final WebsiteRepository websiteRepository;
     private final ProjectRepository projectRepository;
     private final UrlValidator urlValidator;
-    private final AuditQueue auditQueue;
+
+    private final AuditOutboxRepository auditOutboxRepository;
 
     public AuditResponse createAudit(
             Long projectId,
@@ -104,9 +107,15 @@ public class AuditService {
                 .retryCount(0)
                 .maxRetries(3)
                 .build();
-
         Audit savedAudit = auditRepository.save(audit);
-        auditQueue.enqueue(savedAudit.getId());
+
+        AuditOutbox outbox = AuditOutbox.builder()
+                .audit(savedAudit)
+                .eventType("AUDIT_CREATED")
+                .published(false)
+                .build();
+
+        auditOutboxRepository.save(outbox);
 
         return mapToResponse(savedAudit);
     }
