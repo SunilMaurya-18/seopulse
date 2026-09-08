@@ -8,18 +8,18 @@ import java.time.Instant;
 
 @Entity
 @Table(
-        name = "seo_issue",
+        name = "seo_issues",
         indexes = {
                 @Index(
-                        name = "idx_seo_issue_audit_page_id",
+                        name = "idx_seo_issues_audit_page_id",
                         columnList = "audit_page_id"
                 ),
                 @Index(
-                        name = "idx_seo_issue_rule_code",
+                        name = "idx_seo_issues_rule_code",
                         columnList = "rule_code"
                 ),
                 @Index(
-                        name = "idx_seo_issue_severity",
+                        name = "idx_seo_issues_severity",
                         columnList = "severity"
                 ),
                 @Index(
@@ -31,10 +31,11 @@ import java.time.Instant;
 )
 @Getter
 @Setter
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class SeoIssue {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -54,6 +55,7 @@ public class SeoIssue {
 
     @Column(length = 1000)
     private String recommendations;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

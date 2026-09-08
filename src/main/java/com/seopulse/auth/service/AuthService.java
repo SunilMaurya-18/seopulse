@@ -9,6 +9,7 @@ import com.seopulse.user.entity.Role;
 import com.seopulse.user.entity.User;
 import com.seopulse.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -21,7 +22,7 @@ import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
-
+@Slf4j
 public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -32,12 +33,14 @@ public class AuthService {
         String email = request.email()
                 .trim()
                 .toLowerCase(Locale.ROOT);
-        if (userRepository.existsByEmail(request.email())) {
+
+        if (userRepository.existsByEmail(email)) {
             throw new IllegalArgumentException("Email already exists");
         }
+
         User user = User.builder()
                 .name(request.name())
-                .email(request.email())
+                .email(email)
                 .password(passwordEncoder.encode(request.password()))
                 .role(Role.USER)
                 .build();
@@ -47,6 +50,13 @@ public class AuthService {
                 savedUser.getEmail(),
                 savedUser.getRole().name()
         );
+
+        log.info(
+                "User registered: userId={}, email={}",
+                savedUser.getId(),
+                savedUser.getEmail()
+        );
+
         return new AuthResponse(
                 token,
                 "Bearer",
@@ -85,6 +95,12 @@ public class AuthService {
                     user.getRole().name()
             );
 
+            log.info(
+                    "User logged in: userId={}, email={}",
+                    user.getId(),
+                    user.getEmail()
+            );
+
             return new AuthResponse(
                     token,
                     "Bearer",
@@ -95,6 +111,11 @@ public class AuthService {
             );
 
         } catch (AuthenticationException ex) {
+
+            log.warn(
+                    "Failed login attempt: email={}",
+                    email
+            );
 
             throw new InvalidCredentialsException(
                     "Invalid email or password"

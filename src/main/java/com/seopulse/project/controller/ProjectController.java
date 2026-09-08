@@ -4,7 +4,12 @@ import com.seopulse.common.dto.PageResponse;
 import com.seopulse.common.security.CurrentUserService;
 import com.seopulse.project.dto.CreateProjectRequest;
 import com.seopulse.project.dto.ProjectResponse;
+import com.seopulse.project.dto.ProjectSummaryResponse;
 import com.seopulse.project.service.ProjectService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 
 
 
@@ -21,6 +26,7 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/projects")
 @RequiredArgsConstructor
+@SecurityRequirement(name = "bearerAuth")
 public class ProjectController {
 
     private final ProjectService projectService;
@@ -68,6 +74,29 @@ public class ProjectController {
         Long userId = currentUserService.getUserId(authentication);
 
         return projectService.getProject(
+                projectId,
+                userId
+        );
+    }
+
+    @GetMapping("/{projectId}/summary")
+    @Operation(
+            summary = "Get project summary",
+            description = "Returns summary statistics for a project including total websites, audits, and status counts"
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Project summary retrieved successfully"),
+            @ApiResponse(responseCode = "401", description = "Unauthorized"),
+            @ApiResponse(responseCode = "404", description = "Project not found")
+    })
+    public ProjectSummaryResponse getProjectSummary(
+            @PathVariable Long projectId,
+            Authentication authentication
+    ) {
+
+        Long userId = currentUserService.getUserId(authentication);
+
+        return projectService.getProjectSummary(
                 projectId,
                 userId
         );

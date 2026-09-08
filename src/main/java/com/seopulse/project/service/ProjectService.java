@@ -4,12 +4,21 @@ import com.seopulse.common.dto.PageResponse;
 import com.seopulse.common.exception.ResourceNotFoundException;
 import com.seopulse.project.dto.CreateProjectRequest;
 import com.seopulse.project.dto.ProjectResponse;
+import com.seopulse.project.dto.ProjectSummaryResponse;
 import com.seopulse.project.entity.Project;
 import com.seopulse.project.repository.ProjectRepository;
 import com.seopulse.user.entity.User;
 import com.seopulse.user.repository.UserRepository;
+import com.seopulse.website.entity.AuditStatus;
+import com.seopulse.website.repository.AuditPageRepository;
+import com.seopulse.website.repository.AuditRepository;
+import com.seopulse.website.repository.WebsiteRepository;
+import com.seopulse.website.seo.repository.SeoIssueRepository;
+import com.seopulse.website.repository.AuditOutboxRepository;
 
 import lombok.RequiredArgsConstructor;
+
+import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -23,6 +32,12 @@ public class ProjectService {
 
     private final ProjectRepository projectRepository;
     private final UserRepository userRepository;
+
+    private final WebsiteRepository websiteRepository;
+    private final AuditRepository auditRepository;
+    private final AuditPageRepository auditPageRepository;
+    private final AuditOutboxRepository auditOutboxRepository;
+    private final SeoIssueRepository seoIssueRepository;
 
     public ProjectResponse createProject(
             CreateProjectRequest request,
@@ -86,6 +101,23 @@ public class ProjectService {
         return mapToResponse(project);
     }
 
+    /**
+     * Deletes a project and all of its dependent data.
+     *
+     * FK deletion order:
+     *
+     * SeoIssue
+     *     ↓
+     * AuditPage
+     *     ↓
+     * AuditOutbox
+     *     ↓
+     * Audit
+     *     ↓
+     * Website
+     *     ↓
+     * Project
+     */
     public void deleteProject(
             Long projectId,
             Long userId
@@ -102,7 +134,98 @@ public class ProjectService {
 
         verifyOwnership(project, userId);
 
+        List<Long> websiteIds =
+                websiteRepository
+                        .findIdsByProjectId(projectId);
+
+        for (Long websiteId : websiteIds) {
+
+            List<Long> auditIds =
+                    auditRepository
+                            .findIdsByWebsiteId(websiteId);
+
+            for (Long auditId : auditIds) {
+
+                // 1. SEO issues
+                seoIssueRepository.deleteByAuditId(auditId);
+
+                // 2. Audit pages
+                auditPageRepository.deleteByAuditId(auditId);
+
+                // 3. Outbox events
+                auditOutboxRepository.deleteByAuditId(auditId);
+            }
+
+            // 4. Audits
+            auditRepository.deleteByWebsiteId(websiteId);
+        }
+
+        // 5. Websites
+        websiteRepository.deleteByProjectId(projectId);
+
+        // 6. Project
         projectRepository.delete(project);
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectSummaryResponse getProjectSummary(
+            Long projectId,
+            Long userId
+    ) {
+
+        Project project =
+                projectRepository
+                        .findById(projectId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Project not found"
+                                )
+                        );
+
+        verifyOwnership(project, userId);
+
+        long totalWebsites =
+                websiteRepository
+                        .countByProjectId(projectId);
+
+        long totalAudits =
+                auditRepository
+                        .countByWebsiteProjectId(projectId);
+
+        long completedAudits =
+                auditRepository
+                        .countByWebsiteProjectIdAndStatus(
+                                projectId,
+                                AuditStatus.COMPLETED
+                        );
+
+        long failedAudits =
+                auditRepository
+                        .countByWebsiteProjectIdAndStatus(
+                                projectId,
+                                AuditStatus.FAILED
+                        );
+
+        long activeAudits =
+                auditRepository
+                        .countByWebsiteProjectIdAndStatusIn(
+                                projectId,
+                                List.of(
+                                        AuditStatus.QUEUED,
+                                        AuditStatus.CRAWLING,
+                                        AuditStatus.ANALYZING
+                                )
+                        );
+
+        return new ProjectSummaryResponse(
+                project.getId(),
+                project.getName(),
+                totalWebsites,
+                totalAudits,
+                completedAudits,
+                failedAudits,
+                activeAudits
+        );
     }
 
     private void verifyOwnership(

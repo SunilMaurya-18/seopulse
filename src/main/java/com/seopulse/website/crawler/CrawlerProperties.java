@@ -15,6 +15,10 @@ public class CrawlerProperties {
     private int maxDepth = 5;
 
     private int connectTimeoutMs = 10000;
+    private int requestTimeoutMs = 15000;
+    private int maxRedirects = 5;
+    private int concurrency = 2;
+
     private long maxBodySizeBytes = 5_000_000;
     private String userAgent = "SEOPulseBot/1.0(+https://seopulse.example.com/bot)";
     private boolean respectRobotsTxt = true;

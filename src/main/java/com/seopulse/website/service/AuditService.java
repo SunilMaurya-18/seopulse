@@ -7,14 +7,16 @@ import com.seopulse.project.entity.Project;
 import com.seopulse.project.repository.ProjectRepository;
 import com.seopulse.website.dto.AuditPageResponse;
 import com.seopulse.website.dto.AuditResponse;
+import com.seopulse.website.dto.AuditSummaryResponse;
 import com.seopulse.website.dto.SeoIssueResponse;
+import lombok.extern.slf4j.Slf4j;
+import com.seopulse.website.repository.AuditOutboxRepository;
 import com.seopulse.website.entity.Audit;
 import com.seopulse.website.entity.AuditOutbox;
 import com.seopulse.website.entity.AuditPage;
 import com.seopulse.website.entity.AuditStatus;
 import com.seopulse.website.entity.Website;
 import com.seopulse.website.entity.WebsiteStatus;
-import com.seopulse.website.repository.AuditOutboxRepository;
 import com.seopulse.website.repository.AuditPageRepository;
 import com.seopulse.website.repository.AuditRepository;
 import com.seopulse.website.repository.WebsiteRepository;
@@ -32,6 +34,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class AuditService {
 
     private final AuditRepository auditRepository;
@@ -145,6 +148,12 @@ public class AuditService {
 
         auditOutboxRepository.save(outbox);
 
+        log.info(
+                "Audit created: auditId={}, websiteId={}, projectId={}",
+                savedAudit.getId(),
+                websiteId,
+                projectId
+        );
 
         return mapToResponse(savedAudit);
     }
@@ -158,6 +167,7 @@ public class AuditService {
     public PageResponse<AuditResponse> getAudits(
             Long projectId,
             Long websiteId,
+            String status,
             Pageable pageable
     ) {
 
@@ -190,12 +200,31 @@ public class AuditService {
         }
 
 
-        Page<Audit> audits =
-                auditRepository
-                        .findByWebsiteId(
-                                websiteId,
-                                pageable
-                        );
+        Page<Audit> audits;
+
+
+        AuditStatus normalizedStatus =
+                normalizeStatus(status);
+
+
+        if (normalizedStatus != null) {
+
+            audits =
+                    auditRepository
+                            .findByWebsiteIdAndStatus(
+                                    websiteId,
+                                    normalizedStatus,
+                                    pageable
+                            );
+        } else {
+
+            audits =
+                    auditRepository
+                            .findByWebsiteId(
+                                    websiteId,
+                                    pageable
+                            );
+        }
 
 
         Page<AuditResponse> response =
@@ -367,6 +396,174 @@ public class AuditService {
 
 
         return PageResponse.from(response);
+    }
+
+
+    // ============================================================
+    // GET AUDIT SUMMARY
+    // ============================================================
+
+    @Transactional(readOnly = true)
+    public AuditSummaryResponse getAuditSummary(
+            Long projectId,
+            Long auditId
+    ) {
+
+        Audit audit =
+                auditRepository
+                        .findByIdAndWebsiteProjectId(
+                                auditId,
+                                projectId
+                        )
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Audit not found"
+                                )
+                        );
+
+
+        long totalIssues =
+                seoIssueRepository
+                        .countByAuditPageAuditId(auditId);
+
+
+        long errorCount =
+                seoIssueRepository
+                        .countByAuditPageAuditIdAndSeverityIgnoreCase(
+                                auditId,
+                                "ERROR"
+                        );
+
+
+        long warningCount =
+                seoIssueRepository
+                        .countByAuditPageAuditIdAndSeverityIgnoreCase(
+                                auditId,
+                                "WARNING"
+                        );
+
+
+        long infoCount =
+                seoIssueRepository
+                        .countByAuditPageAuditIdAndSeverityIgnoreCase(
+                                auditId,
+                                "INFO"
+                        );
+
+
+        log.debug(
+                "Audit summary retrieved: auditId={}, projectId={}, score={}, issues={}",
+                auditId,
+                projectId,
+                audit.getScore(),
+                totalIssues
+        );
+
+        return new AuditSummaryResponse(
+
+                audit.getId(),
+
+                audit.getWebsite()
+                        .getId(),
+
+                audit.getWebsite()
+                        .getUrl(),
+
+                audit.getStatus(),
+
+                audit.getScore(),
+
+                audit.getPagesCrawled(),
+
+                audit.getPagesAnalyzed(),
+
+                totalIssues,
+
+                errorCount,
+
+                warningCount,
+
+                infoCount,
+
+                audit.getStartedAt(),
+
+                audit.getCompletedAt()
+        );
+    }
+
+
+    // ============================================================
+    // GET LATEST AUDIT
+    // ============================================================
+
+    @Transactional(readOnly = true)
+    public AuditResponse getLatestAudit(
+            Long projectId,
+            Long websiteId
+    ) {
+
+        Website website =
+                websiteRepository
+                        .findById(websiteId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Website not found"
+                                )
+                        );
+
+
+        if (!website.getProject()
+                .getId()
+                .equals(projectId)) {
+
+            throw new ResourceNotFoundException(
+                    "Website not found"
+            );
+        }
+
+
+        return auditRepository
+                .findFirstByWebsiteIdOrderByCreatedAtDesc(websiteId)
+                .map(this::mapToResponse)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "No audits found for this website"
+                        )
+                );
+    }
+
+
+    // ============================================================
+    // NORMALIZE STATUS
+    // ============================================================
+
+    private AuditStatus normalizeStatus(
+            String status
+    ) {
+
+        if (status == null
+                || status.isBlank()) {
+
+            return null;
+        }
+
+
+        String value =
+                status
+                        .trim()
+                        .toUpperCase();
+
+
+        try {
+
+            return AuditStatus.valueOf(value);
+
+        } catch (IllegalArgumentException e) {
+
+            throw new IllegalArgumentException(
+                    "Invalid status. Allowed values: QUEUED, CRAWLING, ANALYZING, COMPLETED, FAILED"
+            );
+        }
     }
 
 

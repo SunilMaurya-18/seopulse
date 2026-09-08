@@ -2,6 +2,8 @@ package com.seopulse.website.dto;
 
 import com.seopulse.website.entity.AuditStatus;
 
+import java.time.Instant;
+
 public record AuditSummaryResponse(
 
         Long auditId,
@@ -24,7 +26,10 @@ public record AuditSummaryResponse(
 
         long warningCount,
 
-        long infoCount
+        long infoCount,
 
-) {
-}
+        Instant startedAt,
+
+        Instant completedAt
+
+) {}

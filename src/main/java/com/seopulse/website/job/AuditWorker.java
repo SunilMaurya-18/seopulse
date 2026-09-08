@@ -32,6 +32,7 @@ public class AuditWorker {
     private final AuditQueue auditQueue;
     private final AuditCrawlerService auditCrawlerService;
     private final AuditAnalysisService auditAnalysisService;
+    private final WorkerProperties workerProperties;
 
     /**
      * Reads the next available audit job from Redis Stream
@@ -123,25 +124,20 @@ public class AuditWorker {
          */
         Audit audit =
                 auditRepository
-                        .findById(auditId)
+                        .findByIdWithWebsite(auditId)
                         .orElse(null);
 
-
-        /*
-         * Audit was deleted or does not exist.
-         * There is nothing to process.
-         */
         if (audit == null) {
 
-            log.warn(
-                    "Audit not found: auditId={}",
+            log.info(
+                    "Ignoring Redis audit job because audit was deleted: auditId={}",
                     auditId
             );
 
             acknowledge(record);
+
             return;
         }
-
 
         /*
          * Idempotency protection.
@@ -353,7 +349,7 @@ public class AuditWorker {
 
     /**
      * Recovers Redis Stream messages that have been
-     * pending for at least 5 minutes.
+     * pending for at least the configured interval.
      * <p>
      * This protects against worker crashes.
      */
@@ -366,8 +362,10 @@ public class AuditWorker {
                                 AuditQueue.STREAM_KEY,
                                 AuditQueue.CONSUMER_GROUP,
                                 Range.unbounded(),
-                                10,
-                                Duration.ofMinutes(5)
+                                workerProperties.getPendingRecoveryLimit(),
+                                Duration.ofMinutes(
+                                        workerProperties.getPendingRecoveryIntervalMinutes()
+                                )
                         );
 
 
@@ -396,7 +394,9 @@ public class AuditWorker {
                                         AuditQueue.STREAM_KEY,
                                         AuditQueue.CONSUMER_GROUP,
                                         CONSUMER_NAME,
-                                        Duration.ofMinutes(5),
+                                        Duration.ofMinutes(
+                                                workerProperties.getPendingRecoveryIntervalMinutes()
+                                        ),
                                         pendingMessage.getId()
                                 );
 

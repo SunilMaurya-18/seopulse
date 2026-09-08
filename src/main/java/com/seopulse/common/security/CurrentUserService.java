@@ -16,7 +16,7 @@ public class CurrentUserService {
 
     @Transactional(readOnly = true)
     public Long getUserId(Authentication authentication) {
-        if (authentication == null || authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated()) {
             throw new ResourceNotFoundException("User not found");
         }
         return userRepository

@@ -11,7 +11,7 @@ import com.seopulse.website.repository.AuditRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.List;
@@ -25,10 +25,10 @@ public class AuditCrawlerService {
     private final AuditPageRepository auditPageRepository;
     private final WebsiteCrawler websiteCrawler;
 
-
+    @Transactional
     public void crawlAudit(Long auditId) {
 
-        Audit audit = auditRepository.findById(auditId)
+        Audit audit = auditRepository.findByIdWithWebsite(auditId)
                 .orElseThrow(() ->
                         new IllegalArgumentException(
                                 "Audit not found: " + auditId
@@ -46,16 +46,16 @@ public class AuditCrawlerService {
 
         try {
 
+            String websiteUrl = audit.getWebsite().getUrl();
+
             log.info(
                     "Starting website crawl: auditId={}, url={}",
                     auditId,
-                    audit.getWebsite().getUrl()
+                    websiteUrl
             );
 
             List<CrawledPage> pages =
-                    websiteCrawler.crawl(
-                            audit.getWebsite().getUrl()
-                    );
+                    websiteCrawler.crawl(websiteUrl);
 
             log.info(
                     "Crawl completed: auditId={}, pages={}",

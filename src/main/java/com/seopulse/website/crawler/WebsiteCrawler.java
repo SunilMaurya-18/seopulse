@@ -372,8 +372,13 @@ public class WebsiteCrawler {
 
             /*
              * Only HTML pages are analyzed.
+             * Require explicit text/html content type.
              */
             if (!isHtml(contentType)) {
+                log.debug(
+                        "Skipping non-HTML content: contentType={}",
+                        contentType
+                );
                 return null;
             }
 
@@ -471,7 +476,7 @@ public class WebsiteCrawler {
                         .uri(uri)
                         .timeout(
                                 Duration.ofMillis(
-                                        properties.getConnectTimeoutMs()
+                                        properties.getRequestTimeoutMs()
                                 )
                         )
                         .header(
@@ -821,6 +826,7 @@ public class WebsiteCrawler {
 
     /**
      * Determines whether a response is HTML.
+     * Requires explicit text/html or application/xhtml+xml content type.
      */
     private boolean isHtml(
             String contentType
@@ -831,14 +837,11 @@ public class WebsiteCrawler {
         }
 
         String normalized =
-                contentType.toLowerCase();
+                contentType.toLowerCase()
+                        .trim();
 
-        return normalized.contains(
-                "text/html"
-        )
-                || normalized.contains(
-                "application/xhtml+xml"
-        );
+        return normalized.startsWith("text/html")
+                || normalized.startsWith("application/xhtml+xml");
     }
 
     /**

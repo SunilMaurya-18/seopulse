@@ -4,6 +4,7 @@ import com.seopulse.website.entity.AuditOutbox;
 import com.seopulse.website.repository.AuditOutboxRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,53 +21,41 @@ public class AuditOutboxPublisher {
     private final AuditQueue auditQueue;
 
     @Scheduled(fixedDelay = 2000)
+    @Transactional
     public void publishPendingEvents() {
 
         List<AuditOutbox> events =
                 auditOutboxRepository
-                        .findTop50ByPublishedFalseOrderByCreatedAtAsc();
-
-        if (events.isEmpty()) {
-            return;
-        }
+                        .findByPublishedFalseOrderByCreatedAtAsc(
+                                PageRequest.of(0, 20)
+                        )
+                        .getContent();
 
         for (AuditOutbox event : events) {
-            publish(event);
-        }
-    }
 
-    @Transactional
-    protected void publish(AuditOutbox event) {
+            try {
 
-        try {
+                auditQueue.enqueue(event.getAudit().getId());
 
-            Long auditId = event.getAudit().getId();
+                event.setPublished(true);
+                event.setPublishedAt(Instant.now());
 
-            String recordId =
-                    auditQueue.enqueue(auditId);
+                auditOutboxRepository.save(event);
 
-            event.setPublished(true);
-            event.setPublishedAt(Instant.now());
+                log.debug(
+                        "Published audit outbox event: eventId={}, auditId={}",
+                        event.getId(),
+                        event.getAudit().getId()
+                );
 
-            auditOutboxRepository.save(event);
+            } catch (Exception ex) {
 
-            log.info(
-                    "Published audit outbox event: " +
-                            "outboxId={}, auditId={}, recordId={}",
-                    event.getId(),
-                    auditId,
-                    recordId
-            );
-
-        } catch (Exception ex) {
-
-            log.error(
-                    "Failed to publish audit outbox event: " +
-                            "outboxId={}, auditId={}",
-                    event.getId(),
-                    event.getAudit().getId(),
-                    ex
-            );
+                log.error(
+                        "Failed to publish audit outbox event: eventId={}",
+                        event.getId(),
+                        ex
+                );
+            }
         }
     }
 }
